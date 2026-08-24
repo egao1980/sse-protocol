@@ -3,6 +3,7 @@
   :description "CLOS SSE (text/event-stream) protocol for cl-stack"
   :author "egao1980"
   :license "MIT"
+  :depends-on ("uiop" "babel")
   :serial t
   :pathname "src"
   :components ((:file "package")
