@@ -123,13 +123,10 @@
                     :data (format nil "~{~a~^~%~}" (nreverse data-parts)))))
 
 (defun %binary-stream-p (stream)
-  (let ((et (stream-element-type stream)))
-    (or (eq et 'unsigned-byte)
-        (and (consp et)
-             (or (eq (car et) 'unsigned-byte)
-                 (and (eq (car et) 'integer)
-                      (eql (second et) 0)
-                      (eql (third et) 255)))))))
+  "T when STREAM should be read with READ-BYTE.
+   Gray HTTP body streams often omit STREAM-ELEMENT-TYPE — treat those as binary."
+  (let ((et (ignore-errors (stream-element-type stream))))
+    (not (and et (ignore-errors (subtypep et 'character))))))
 
 (defvar *%binary-unread* (make-hash-table :test 'eq))
 
