@@ -20,6 +20,16 @@ Framing is protocol-local (`read-sse-event` / `write-sse-event`). `open-sse` / `
 
 Keepalives (independent of object streams): comment `: ping` by default. `make-sse-keepalive` starts an idle timer; `read-sse-event` skips them unless `:include-keepalives t`. Style `:comment` | `:event`; interval via `*sse-keepalive-interval*` (default 15s) or `make-sse-keepalive :interval`.
 
+Object streams (`io-protocol`, independent of keepalives):
+
+```lisp
+(let ((out (sse-protocol:make-sse-output-stream stream)))
+  (io-protocol:write-object out (sse-protocol:make-sse-event :data "hi")))
+
+(let ((in (sse-protocol:make-sse-input-stream stream)))
+  (io-protocol:read-object in)) ; → sse-event or :eof
+```
+
 ```
 sbcl --load scripts/roundtrip.lisp
 ```

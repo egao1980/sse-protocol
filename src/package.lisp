@@ -50,6 +50,10 @@
            #:sse-connection
            #:sse-connection-url
            #:sse-connection-last-event-id
-           #:close-sse))
+           #:close-sse
+           #:sse-object-input-stream
+           #:sse-object-output-stream
+           #:make-sse-input-stream
+           #:make-sse-output-stream))
 
 (in-package #:sse-protocol)
