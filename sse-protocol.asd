@@ -18,7 +18,12 @@
   :pathname "tests"
   :serial t
   :components ((:file "package")
+               (:module "fixtures"
+                :components ((:static-file "wpt-format.sexp")
+                             (:static-file "eventsource-fixtures.sexp")))
+               (:file "fixture-loader")
                (:file "protocol-test")
+               (:file "compliance-test")
                (:file "keepalive-test")
                (:file "object-stream-test"))
   :perform (test-op (o c)

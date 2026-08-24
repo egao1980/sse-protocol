@@ -115,7 +115,9 @@
                 (unless (find #\nul value)
                   (setf id value)))
                ((string= name "event")
-                (setf event value))
+                ;; Empty event type is the default (message). Keep NIL so
+                ;; empty-data blocks are not treated as named events.
+                (setf event (if (plusp (length value)) value nil)))
                ((string= name "retry")
                 (when (and (plusp (length value))
                            (every #'digit-char-p value))

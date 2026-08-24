@@ -97,6 +97,12 @@
     (ok (equal "ready" (sse-protocol:sse-event-type (first evs))))
     (ok (equal "" (sse-protocol:sse-event-data (first evs))))))
 
+(deftest empty-event-type-is-default
+  (let ((ev (decode (format nil "event: ~%data: data~%"))))
+    (ok (null (sse-protocol:sse-event-type ev)))
+    (ok (equal "data" (sse-protocol:sse-event-data ev))))
+  (ok (null (collect-string (format nil "event:~%~%")))))
+
 (deftest incomplete-eof-discarded
   (ok (null (collect-string (format nil "data: partial"))))
   (ok (null (collect-string (format nil "data: partial~%")))))

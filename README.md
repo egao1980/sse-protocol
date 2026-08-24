@@ -30,11 +30,13 @@ Object streams (`io-protocol`, independent of keepalives):
   (io-protocol:read-object in)) ; → sse-event or :eof
 ```
 
+WHATWG `eventsource/format-*` and rexxars/eventsource-fixtures static parse routes are frozen under `tests/fixtures/*.sexp` (Lisp-owned; no JS refresh). MIME/charset/reconnect/EventSource API tests are out of scope.
+
 ```
 sbcl --load scripts/roundtrip.lisp
 ```
 
-CI: `setup-client` + `setup-roswell` + `scripts/ci-install.lisp` / `ci-test.lisp` (OCI only, no Quicklisp).
+CI: `setup-client` + `setup-roswell` + `scripts/ci-install.lisp` / `ci-test.lisp` (OCI, QL only for missing test pins like `dissect`).
 
 ## License
 
