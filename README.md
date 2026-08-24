@@ -18,6 +18,8 @@ Tracks: https://github.com/egao1980/cl-stack/issues/184
 
 Framing is protocol-local (`read-sse-event` / `write-sse-event`). `open-sse` / `serve-sse` need `sse-backend-http` or `sse-backend-clack`.
 
+Keepalives (independent of object streams): comment `: ping` by default. `make-sse-keepalive` starts an idle timer; `read-sse-event` skips them unless `:include-keepalives t`. Style `:comment` | `:event`; interval via `*sse-keepalive-interval*` (default 15s) or `make-sse-keepalive :interval`.
+
 ```
 sbcl --load scripts/roundtrip.lisp
 ```

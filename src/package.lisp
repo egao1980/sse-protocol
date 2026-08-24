@@ -26,7 +26,21 @@
            #:sse-reader-last-event-id
            #:sse-reader-retry
            #:sse-reader-stream
+           #:sse-reader-include-keepalives-p
            #:close-sse-reader
+           #:*sse-keepalive-interval*
+           #:*sse-keepalive-style*
+           #:*sse-keepalive-payload*
+           #:*sse-keepalive-event-type*
+           #:sse-keepalive-p
+           #:make-sse-keepalive-event
+           #:write-sse-keepalive
+           #:sse-keepalive
+           #:make-sse-keepalive
+           #:start-sse-keepalive
+           #:stop-sse-keepalive
+           #:note-sse-activity
+           #:maybe-write-sse-keepalive
            #:backend-read-sse-event
            #:backend-write-sse-event
            #:backend-open-sse

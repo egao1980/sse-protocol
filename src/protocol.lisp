@@ -27,6 +27,8 @@
    (retry :initform nil :accessor sse-reader-retry)
    (include-empty :initarg :include-empty :initform nil
                   :reader sse-reader-include-empty-p)
+   (include-keepalives :initarg :include-keepalives :initform nil
+                       :reader sse-reader-include-keepalives-p)
    (seen-bom :initform nil :accessor %sse-reader-seen-bom-p)))
 
 (defclass sse-connection ()
@@ -49,11 +51,12 @@
   (close-sse-reader (sse-connection-reader connection) :abort abort)
   connection)
 
-(defun make-sse-reader (stream &key last-event-id include-empty)
+(defun make-sse-reader (stream &key last-event-id include-empty include-keepalives)
   (make-instance 'sse-reader
                  :stream stream
                  :last-event-id last-event-id
-                 :include-empty include-empty))
+                 :include-empty include-empty
+                 :include-keepalives include-keepalives))
 
 (defun %field-space-value (line colon)
   "WHATWG: if the first value char is U+0020 SPACE, drop it."
@@ -190,12 +193,34 @@
       (%read-binary-line stream)
       (%read-character-line stream)))
 
+(defvar *sse-keepalive-event-type* "ping"
+  "Event type treated as a keepalive when data is empty or equals *SSE-KEEPALIVE-PAYLOAD*.")
+
+(defvar *sse-keepalive-payload* "ping"
+  "Comment text (:comment style) or data payload (:event style).")
+
+(defun sse-keepalive-p (event)
+  "T for comment-only blocks or configured ping events (empty / payload data)."
+  (and (sse-event-p event)
+       (or (and (sse-event-comment event)
+                (zerop (length (or (sse-event-data event) "")))
+                (null (sse-event-type event)))
+           (and (equal (sse-event-type event) *sse-keepalive-event-type*)
+                (or (zerop (length (or (sse-event-data event) "")))
+                    (equal (sse-event-data event) *sse-keepalive-payload*))))))
+
 (defun %dispatchable-p (event include-empty)
   (or include-empty
       (plusp (length (or (sse-event-data event) "")))
       (sse-event-type event)))
 
-(defun %read-sse-event (stream &key include-empty last-event-id strip-bom)
+(defun %keep-event-p (event include-empty include-keepalives)
+  (if (sse-keepalive-p event)
+      include-keepalives
+      (%dispatchable-p event include-empty)))
+
+(defun %read-sse-event (stream &key include-empty include-keepalives
+                                 last-event-id strip-bom)
   "Read one dispatched event from STREAM.
    Returns (values event last-event-id retry). EVENT is NIL at EOF.
    Incomplete blocks at EOF are discarded (WHATWG).
@@ -227,15 +252,18 @@
             (setf retry (sse-event-retry ev)))
           (unless (sse-event-id ev)
             (setf (sse-event-id ev) last-event-id))
-          (when (%dispatchable-p ev include-empty)
+          (when (%keep-event-p ev include-empty include-keepalives)
             (return (values ev last-event-id retry))))))))
 
-(defun read-sse-event (source &key include-empty)
+(defun read-sse-event (source &key include-empty include-keepalives)
   "Read the next event from a stream, SSE-READER, or SSE-CONNECTION.
-   NIL at EOF. Framing is protocol-local — no backend required."
+   NIL at EOF. Framing is protocol-local — no backend required.
+   Keepalives are skipped unless INCLUDE-KEEPALIVES."
   (etypecase source
     (sse-connection
-     (read-sse-event (sse-connection-reader source) :include-empty include-empty))
+     (read-sse-event (sse-connection-reader source)
+                     :include-empty include-empty
+                     :include-keepalives include-keepalives))
     (sse-reader
      (let ((strip (not (%sse-reader-seen-bom-p source))))
        (setf (%sse-reader-seen-bom-p source) t)
@@ -243,6 +271,8 @@
            (%read-sse-event (sse-reader-stream source)
                             :include-empty (or include-empty
                                                (sse-reader-include-empty-p source))
+                            :include-keepalives (or include-keepalives
+                                                    (sse-reader-include-keepalives-p source))
                             :last-event-id (sse-reader-last-event-id source)
                             :strip-bom strip)
          (setf (sse-reader-last-event-id source) last-id)
@@ -250,7 +280,9 @@
            (setf (sse-reader-retry source) retry))
          ev)))
     (stream
-     (%read-sse-event source :include-empty include-empty :strip-bom t))))
+     (%read-sse-event source :include-empty include-empty
+                             :include-keepalives include-keepalives
+                             :strip-bom t))))
 
 (defun write-sse-event (stream event &key flush)
   "Write EVENT onto STREAM (character or UTF-8 binary). FLUSH → finish-output."
@@ -261,20 +293,24 @@
     (when flush (finish-output stream))
     event))
 
-(defun map-sse-events (function source &key include-empty)
+(defun map-sse-events (function source &key include-empty include-keepalives)
   "Call FUNCTION with each event from SOURCE until EOF. Returns T.
    Bare streams are wrapped in an SSE-READER so last-event-id / retry persist."
   (let ((src (if (streamp source)
-                 (make-sse-reader source :include-empty include-empty)
+                 (make-sse-reader source :include-empty include-empty
+                                         :include-keepalives include-keepalives)
                  source)))
-    (loop for ev = (read-sse-event src :include-empty include-empty)
+    (loop for ev = (read-sse-event src :include-empty include-empty
+                                       :include-keepalives include-keepalives)
           while ev
           do (funcall function ev))
     t))
 
-(defun collect-sse-events (source &key include-empty)
+(defun collect-sse-events (source &key include-empty include-keepalives)
   (let ((out '()))
-    (map-sse-events (lambda (ev) (push ev out)) source :include-empty include-empty)
+    (map-sse-events (lambda (ev) (push ev out)) source
+                    :include-empty include-empty
+                    :include-keepalives include-keepalives)
     (nreverse out)))
 
 (defgeneric backend-read-sse-event (backend stream &key)
