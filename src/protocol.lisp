@@ -296,7 +296,7 @@
       (error 'sse-error
              :message "*sse-backend* is nil — load sse-backend-http or sse-backend-clack")))
 
-(defun open-sse (url &key last-event-id headers timeout method content
+(defun open-sse (url &key last-event-id headers timeout (method :get) content
                        (backend *sse-backend*))
   (backend-open-sse (%ensure-backend backend) url
                     :last-event-id last-event-id
