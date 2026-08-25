@@ -36,7 +36,7 @@ WHATWG `eventsource/format-*` and rexxars/eventsource-fixtures static parse rout
 sbcl --load scripts/roundtrip.lisp
 ```
 
-CI: `setup-client` + `setup-roswell` + `scripts/ci-install.lisp` / `ci-test.lisp` (OCI, QL only for missing test pins like `dissect`).
+CI: canned [`cl-repository`](https://github.com/egao1980/cl-repository) (`test-system.yml` / `setup-client` + `ci`). Deps from `ghcr.io/egao1980/cl-systems`.
 
 ## License
 
