@@ -4,6 +4,7 @@
   :author "egao1980"
   :license "MIT"
   :depends-on ("uiop" "babel" "bordeaux-threads" "io-protocol")
+  :properties (:cl-repo (:ci (:with ("dissect") :sources (("dissect" :ql) ("babel" :ql) ("bordeaux-threads" :ql)))))
   :serial t
   :pathname "src"
   :components ((:file "package")
