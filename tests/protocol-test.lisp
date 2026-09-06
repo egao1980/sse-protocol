@@ -213,8 +213,22 @@
   (let ((sse-protocol:*sse-backend* nil))
     (ok (signals (sse-protocol:open-sse "https://example.com/sse")
                  'sse-protocol:sse-error))
+    (ok (signals (sse-protocol:open-sse "https://example.com/sse" :reconnect t)
+                 'sse-protocol:sse-error))
     (ok (signals (sse-protocol:serve-sse (lambda (env) (declare (ignore env)) nil))
                  'sse-protocol:sse-error))))
+
+(deftest connection-read-event-default
+  (let* ((wire (concatenate 'string (wire :id "1" :data "a") (wire :data "b")))
+         (reader (sse-protocol:make-sse-reader (make-string-input-stream wire)))
+         (conn (make-instance 'sse-protocol:sse-connection
+                              :url "http://example/sse"
+                              :reader reader)))
+    (ok (equal "a" (sse-protocol:sse-event-data
+                    (sse-protocol:sse-connection-read-event conn))))
+    (ok (equal "1" (sse-protocol:sse-connection-last-event-id conn)))
+    (ok (equal "b" (sse-protocol:sse-event-data
+                    (sse-protocol:read-sse-event conn))))))
 
 (deftest binary-crlf-matches-character
   (let ((wire (format nil "id: 1~cdata: a~c~cid: 2~cdata: b~c~c"

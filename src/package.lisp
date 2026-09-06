@@ -49,7 +49,10 @@
            #:serve-sse
            #:sse-connection
            #:sse-connection-url
+           #:sse-connection-reader
+           #:sse-connection-closer
            #:sse-connection-last-event-id
+           #:sse-connection-read-event
            #:close-sse
            #:sse-object-input-stream
            #:sse-object-output-stream
