@@ -257,15 +257,25 @@
           (when (%keep-event-p ev include-empty include-keepalives)
             (return (values ev last-event-id retry))))))))
 
+(defgeneric sse-connection-read-event (connection &key include-empty include-keepalives)
+  (:documentation "Read the next event from CONNECTION.
+   Default reads the current reader. Consume backends may specialize
+   to reopen on EOF (reconnect lives in sse-backend-http).")
+  (:method ((connection sse-connection) &key include-empty include-keepalives)
+    (read-sse-event (sse-connection-reader connection)
+                    :include-empty include-empty
+                    :include-keepalives include-keepalives)))
+
 (defun read-sse-event (source &key include-empty include-keepalives)
   "Read the next event from a stream, SSE-READER, or SSE-CONNECTION.
    NIL at EOF. Framing is protocol-local — no backend required.
-   Keepalives are skipped unless INCLUDE-KEEPALIVES."
+   Keepalives are skipped unless INCLUDE-KEEPALIVES.
+   Connection reconnect/retry is a consume-backend concern."
   (etypecase source
     (sse-connection
-     (read-sse-event (sse-connection-reader source)
-                     :include-empty include-empty
-                     :include-keepalives include-keepalives))
+     (sse-connection-read-event source
+                                :include-empty include-empty
+                                :include-keepalives include-keepalives))
     (sse-reader
      (let ((strip (not (%sse-reader-seen-bom-p source))))
        (setf (%sse-reader-seen-bom-p source) t)
@@ -323,8 +333,12 @@
   (:method ((backend sse-backend) stream event &key flush)
     (write-sse-event stream event :flush flush)))
 
-(defgeneric backend-open-sse (backend url &key last-event-id headers timeout method content)
-  (:documentation "Client: open URL as an SSE connection."))
+(defgeneric backend-open-sse (backend url &key last-event-id headers timeout
+                                          method content reconnect
+                                          default-retry reconnect-limit)
+  (:documentation "Client: open URL as an SSE connection.
+   RECONNECT / DEFAULT-RETRY / RECONNECT-LIMIT are consume-backend
+   policy (sse-backend-http). Framing stays here."))
 
 (defgeneric backend-serve-sse (backend handler &key host port path)
   (:documentation "Server: serve HANDLER (env → events | writer)."))
@@ -335,13 +349,21 @@
              :message "*sse-backend* is nil — load sse-backend-http or sse-backend-clack")))
 
 (defun open-sse (url &key last-event-id headers timeout (method :get) content
+                       reconnect default-retry reconnect-limit
                        (backend *sse-backend*))
+  "Open URL via *SSE-BACKEND*.
+   RECONNECT T asks the consume backend to reopen on read error/EOF
+   after (or SSE-READER-RETRY DEFAULT-RETRY) ms, sending Last-Event-ID.
+   The reconnect loop is implemented in sse-backend-http, not here."
   (backend-open-sse (%ensure-backend backend) url
                     :last-event-id last-event-id
                     :headers headers
                     :timeout timeout
                     :method method
-                    :content content))
+                    :content content
+                    :reconnect reconnect
+                    :default-retry default-retry
+                    :reconnect-limit reconnect-limit))
 
 (defun serve-sse (handler &key host port path (backend *sse-backend*))
   (backend-serve-sse (%ensure-backend backend) handler
