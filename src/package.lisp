@@ -49,6 +49,8 @@
            #:serve-sse
            #:sse-connection
            #:sse-connection-url
+           #:sse-connection-reader
+           #:sse-connection-closer
            #:sse-connection-last-event-id
            #:sse-connection-read-event
            #:close-sse
