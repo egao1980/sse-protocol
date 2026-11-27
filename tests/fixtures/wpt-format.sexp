@@ -33,7 +33,6 @@
 
  (:name "format-field-data"
   :source "eventsource/format-field-data.any.js"
-  :include-empty t
   :wire (:esc "data:\\n\\ndata\\ndata\\n\\ndata:test\\n\\n\\n")
   :events ((:data "") (:data "\\n") (:data "test")))
 

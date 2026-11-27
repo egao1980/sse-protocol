@@ -1,5 +1,5 @@
 (defsystem "sse-protocol"
-  :version "0.1.1"
+  :version "0.1.2"
   :description "CLOS SSE (text/event-stream) protocol for cl-stack"
   :author "egao1980"
   :license "MIT"

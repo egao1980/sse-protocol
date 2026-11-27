@@ -73,8 +73,20 @@
       (subseq line 1)
       line))
 
+(defun %control-block-p (event)
+  "T when EVENT is a comment and/or retry block with no data, type or id.
+   Such blocks are not meant to dispatch (keepalives, retry hints)."
+  (and (zerop (length (or (sse-event-data event) "")))
+       (null (sse-event-type event))
+       (null (sse-event-id event))
+       (or (sse-event-comment event) (sse-event-retry event))
+       t))
+
 (defun encode-sse-event (event &key)
-  "Serialize EVENT to a WHATWG event-stream block (trailing blank line)."
+  "Serialize EVENT to a WHATWG event-stream block (trailing blank line).
+   Every event that is not a comment/retry-only control block carries a
+   data line, so it dispatches in a browser EventSource: empty or NIL data
+   is written as a bare `data:` line (dispatched with data \"\")."
   (with-output-to-string (out)
     (when (sse-event-comment event)
       (dolist (line (uiop:split-string (sse-event-comment event)
@@ -87,16 +99,26 @@
     (when (sse-event-retry event)
       (format out "retry: ~a~%" (sse-event-retry event)))
     (let ((data (or (sse-event-data event) "")))
-      (when (plusp (length data))
-        (if (find #\newline data)
-            (dolist (line (uiop:split-string data :separator '(#\newline)))
-              (format out "data: ~a~%" line))
-            (format out "data: ~a~%" data))))
+      (cond
+        ((plusp (length data))
+         (if (find #\newline data)
+             (dolist (line (uiop:split-string data :separator '(#\newline)))
+               (format out "data: ~a~%" line))
+             (format out "data: ~a~%" data)))
+        ((%control-block-p event))
+        ;; WHATWG: a block whose data buffer stays empty is not dispatched.
+        ;; A bare `data:` line makes the buffer "\n", dispatched as "".
+        (t (format out "data:~%"))))
     (terpri out)))
 
 (defun decode-sse-block (string &key)
-  "Parse one dispatched event block (no trailing blank line required)."
-  (let ((id nil) (event nil) (retry nil) (comment nil) (data-parts '()))
+  "Parse one event block (no trailing blank line required).
+   Returns (values event data-seen-p). The event is built from the fields
+   even when the block has no data line. DATA-SEEN-P is T when the block
+   had at least one data field: per WHATWG only such blocks are dispatched
+   (READ-SSE-EVENT applies that rule)."
+  (let ((id nil) (event nil) (retry nil) (comment nil) (data-parts '())
+        (data-seen nil))
     (dolist (raw (uiop:split-string string :separator '(#\newline)))
       (let ((line (string-right-trim '(#\return) raw)))
         (cond
@@ -123,9 +145,11 @@
                            (every #'digit-char-p value))
                   (setf retry (parse-integer value))))
                ((string= name "data")
+                (setf data-seen t)
                 (push value data-parts))))))))
-    (make-sse-event :id id :event event :retry retry :comment comment
-                    :data (format nil "~{~a~^~%~}" (nreverse data-parts)))))
+    (values (make-sse-event :id id :event event :retry retry :comment comment
+                            :data (format nil "~{~a~^~%~}" (nreverse data-parts)))
+            data-seen)))
 
 (defun %binary-stream-p (stream)
   "T when STREAM should be read with READ-BYTE.
@@ -211,15 +235,16 @@
                 (or (zerop (length (or (sse-event-data event) "")))
                     (equal (sse-event-data event) *sse-keepalive-payload*))))))
 
-(defun %dispatchable-p (event include-empty)
-  (or include-empty
-      (plusp (length (or (sse-event-data event) "")))
-      (sse-event-type event)))
+(defun %dispatchable-p (data-seen-p include-empty)
+  "WHATWG dispatch: only a block with a data field fires (its data may be
+   \"\"). INCLUDE-EMPTY also returns blocks without one (id-only, a bare
+   event: line), which a browser would not dispatch."
+  (or include-empty data-seen-p))
 
-(defun %keep-event-p (event include-empty include-keepalives)
+(defun %keep-event-p (event data-seen-p include-empty include-keepalives)
   (if (sse-keepalive-p event)
       include-keepalives
-      (%dispatchable-p event include-empty)))
+      (%dispatchable-p data-seen-p include-empty)))
 
 (defun %read-sse-event (stream &key include-empty include-keepalives
                                  last-event-id strip-bom)
@@ -247,14 +272,15 @@
               (t
                (setf saw-line t)
                (push line lines)))))
-        (let ((ev (decode-sse-block (format nil "~{~a~%~}" (nreverse lines)))))
+        (multiple-value-bind (ev data-seen-p)
+            (decode-sse-block (format nil "~{~a~%~}" (nreverse lines)))
           (when (sse-event-id ev)
             (setf last-event-id (sse-event-id ev)))
           (when (sse-event-retry ev)
             (setf retry (sse-event-retry ev)))
           (unless (sse-event-id ev)
             (setf (sse-event-id ev) last-event-id))
-          (when (%keep-event-p ev include-empty include-keepalives)
+          (when (%keep-event-p ev data-seen-p include-empty include-keepalives)
             (return (values ev last-event-id retry))))))))
 
 (defgeneric sse-connection-read-event (connection &key include-empty include-keepalives)
@@ -270,6 +296,9 @@
   "Read the next event from a stream, SSE-READER, or SSE-CONNECTION.
    NIL at EOF. Framing is protocol-local — no backend required.
    Keepalives are skipped unless INCLUDE-KEEPALIVES.
+   Dispatch follows WHATWG: a block without a data field (e.g. `event: x`
+   alone, or `id: 1` alone) is not returned; `data:` alone is returned with
+   data \"\". INCLUDE-EMPTY also returns blocks without a data field.
    Connection reconnect/retry is a consume-backend concern."
   (etypecase source
     (sse-connection
