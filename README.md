@@ -18,6 +18,8 @@ Tracks: https://github.com/egao1980/cl-stack/issues/184
 
 Framing is protocol-local (`read-sse-event` / `write-sse-event`). `open-sse` / `serve-sse` need `sse-backend-http` or `sse-backend-clack`.
 
+Dispatch follows WHATWG. `encode-sse-event` writes a bare `data:` line when an event with a type or id (or no fields at all) has empty or NIL data, so a browser `EventSource` fires it with data `""`. Comment-only and retry-only blocks (keepalives, retry hints) carry no data line. `read-sse-event` / `collect-sse-events` return only blocks that had a data field (`data:` alone gives `""`). A block like `event: x` with no data line is not returned unless you pass `:include-empty t`. `decode-sse-block` parses any block and returns a second value, `data-seen-p`.
+
 `retry:` is parsed onto `sse-reader-retry`. Client reconnect (`open-sse :reconnect t` — sleep that delay, reopen with `Last-Event-ID`) lives in **sse-backend-http**, not here.
 
 Keepalives (independent of object streams): comment `: ping` by default. `make-sse-keepalive` starts an idle timer; `read-sse-event` skips them unless `:include-keepalives t`. Style `:comment` | `:event`; interval via `*sse-keepalive-interval*` (default 15s) or `make-sse-keepalive :interval`.

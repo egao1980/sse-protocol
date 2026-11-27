@@ -91,11 +91,104 @@
     (ok (= 1 (length evs)))
     (ok (equal "1" (sse-protocol:sse-event-id (first evs))))))
 
-(deftest named-empty-event-kept
-  (let ((evs (collect-string (format nil "event: ready~%~%"))))
+(deftest named-event-without-data-not-dispatched
+  ;; WHATWG: the data buffer stays empty, so a browser fires nothing.
+  (ok (null (collect-string (format nil "event: ready~%~%"))))
+  (let ((evs (collect-string (format nil "event: ready~%~%") :include-empty t)))
+    (ok (= 1 (length evs)))
+    (ok (equal "ready" (sse-protocol:sse-event-type (first evs))))))
+
+(deftest named-empty-data-event-dispatched
+  (let ((evs (collect-string (format nil "event: ready~%data:~%~%"))))
     (ok (= 1 (length evs)))
     (ok (equal "ready" (sse-protocol:sse-event-type (first evs))))
     (ok (equal "" (sse-protocol:sse-event-data (first evs))))))
+
+(deftest bare-data-line-dispatched
+  (let ((evs (collect-string (format nil "data:~%~%"))))
+    (ok (= 1 (length evs)))
+    (ok (equal "" (sse-protocol:sse-event-data (first evs))))
+    (ok (null (sse-protocol:sse-event-type (first evs))))))
+
+(deftest decode-reports-data-seen
+  (ok (null (nth-value 1 (decode (format nil "event: x~%")))))
+  (ok (nth-value 1 (decode (format nil "event: x~%data:~%"))))
+  (ok (nth-value 1 (decode (format nil "data~%")))))
+
+(deftest encode-empty-data-typed-event
+  (ok (equal (wire :event "done" :data "")
+             (format nil "event: done~%data:~%~%")))
+  (ok (equal (wire :event "done" :data nil)
+             (format nil "event: done~%data:~%~%")))
+  (ok (equal (wire :event "done")
+             (format nil "event: done~%data:~%~%")))
+  (ok (equal (wire :id "4" :data "")
+             (format nil "id: 4~%data:~%~%")))
+  (ok (equal (wire :data "")
+             (format nil "data:~%~%")))
+  (ok (equal (wire :comment "c" :event "done")
+             (format nil ":c~%event: done~%data:~%~%"))))
+
+(deftest encode-control-blocks-unchanged
+  (ok (equal (wire :comment "ping") (format nil ":ping~%~%")))
+  (ok (equal (wire :comment (format nil "a~%b")) (format nil ":a~%:b~%~%")))
+  (ok (equal (wire :retry 3000) (format nil "retry: 3000~%~%")))
+  (ok (equal (wire :comment "x" :retry 10) (format nil ":x~%retry: 10~%~%"))))
+
+(deftest encode-multiline-data-unchanged
+  (ok (equal (wire :event "m" :data (format nil "a~%b~%c"))
+             (format nil "event: m~%data: a~%data: b~%data: c~%~%")))
+  (ok (equal (wire :data (format nil "a~%"))
+             (format nil "data: a~%data: ~%~%"))))
+
+(defun whatwg-dispatch (wire)
+  "Independent WHATWG event-stream dispatch (EventSource interpretation):
+   a list of (type . data) for each event a browser would fire."
+  (let ((out '()) (data nil) (type ""))
+    (dolist (line (uiop:split-string wire :separator '(#\newline)))
+      (cond
+        ((zerop (length line))
+         (when data
+           (let ((d (if (and (plusp (length data))
+                             (char= #\newline (char data (1- (length data)))))
+                        (subseq data 0 (1- (length data)))
+                        data)))
+             (push (cons (if (string= type "") "message" type) d) out)))
+         (setf data nil type ""))
+        ((char= (char line 0) #\:))
+        (t
+         (let* ((colon (position #\: line))
+                (name (if colon (subseq line 0 colon) line))
+                (value (if colon
+                           (let ((v (subseq line (1+ colon))))
+                             (if (and (plusp (length v)) (char= #\space (char v 0)))
+                                 (subseq v 1)
+                                 v))
+                           "")))
+           (cond ((string= name "data")
+                  (setf data (format nil "~a~a~%" (or data "") value)))
+                 ((string= name "event") (setf type value)))))))
+    (nreverse out)))
+
+(deftest whatwg-dispatch-of-encoded-events
+  (let ((cases (list (cons (ev :event "done" :data "") '(("done" . "")))
+                     (cons (ev :event "done") '(("done" . "")))
+                     (cons (ev :data "") '(("message" . "")))
+                     (cons (ev :id "1" :event "x" :data "y") '(("x" . "y")))
+                     (cons (ev :event "m" :data (format nil "a~%b"))
+                           (list (cons "m" (format nil "a~%b"))))
+                     (cons (ev :comment "ping") '())
+                     (cons (ev :retry 500) '()))))
+    (loop for (event . expected) in cases
+          for wire = (sse-protocol:encode-sse-event event)
+          do (ok (equal expected (whatwg-dispatch wire)) (format nil "~s" wire))
+             ;; The stack decoder agrees with the reference dispatch.
+             (ok (equal expected
+                        (mapcar (lambda (e)
+                                  (cons (or (sse-protocol:sse-event-type e) "message")
+                                        (sse-protocol:sse-event-data e)))
+                                (collect-string wire)))
+                 (format nil "decoder ~s" wire)))))
 
 (deftest empty-event-type-is-default
   (let ((ev (decode (format nil "event: ~%data: data~%"))))

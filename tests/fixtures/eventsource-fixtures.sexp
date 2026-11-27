@@ -77,7 +77,6 @@
 
  (:name "data-field-parsing"
   :source "rexxars/eventsource-fixtures /data-field-parsing"
-  :include-empty t
   :wire (:esc "data:\\n\\ndata\\ndata\\n\\ndata:test\\n\\nevent: done\\ndata: ✔\\n\\n")
   :events ((:data "")
            (:data "\\n")
